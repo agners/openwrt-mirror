@@ -9,6 +9,9 @@ include $(INCLUDE_DIR)/image.mk
 
 JFFS2_BLOCKSIZE = 64k 128k 256k
 
+UBIFS_OPTS = -m 2048 -e 124KiB -c 4096
+UBINIZE_OPTS = -m 2048 -p 128KiB
+
 define imgname
 $(BIN_DIR)/$(IMG_PREFIX)-$(2)-$(patsubst jffs2-%,jffs2,$(patsubst squashfs-%,squashfs,$(1)))
 endef
