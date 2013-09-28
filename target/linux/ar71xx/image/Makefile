@@ -710,7 +710,67 @@ define Image/Build/Netgear/initramfs
 		$(5)
 endef
 
-Image/Build/NetgearNAND/initramfs=$(call Image/Build/Netgear/initramfs,$(1),$(2),$(3),$(4),$(5))
+
+# $1: squashfs-64k
+# $2: Board name (small caps)
+# $3: Kernel board specific cmdline
+# $4: Kernel mtdparts definition
+# $5: U-Boot magic
+# $6: Board name (upper caps)
+# $7:
+# $8: DNI Hardware version
+define Image/Build/NetgearNAND
+	# Append UBI image to rootfs and generate DNI image
+	( \
+		cat vmlinux-$(2).uImage.fakehdrforubi; \
+		cat $(KDIR)/root.ubi \
+	) > $(call imgname,ubifs,$(2))-uboot.img
+	$(STAGING_DIR_HOST)/bin/mkdniimg \
+		-B $(6) -v OpenWrt.$(REVISION) -r "$$$$r" $(8) \
+		-i $(call imgname,ubifs,$(2))-uboot.img \
+		-o $(call imgname,ubifs,$(2))-factory.img
+endef
+
+# $1: (empty?)
+# $2: Board name (small caps)
+# $3: Kernel board specific cmdline
+# $4: Kernel mtdparts definition
+# $5: U-Boot magic
+define Image/Build/NetgearNAND/buildkernel
+	$(eval kernelsize=$(call mtdpartsize,kernel,$(4)))
+	echo == NetgearNAND buildkernel ==
+	$(call MkuImageLzma,$(2),$(3) $(4),-d20)
+	-rm -rf $(KDIR_TMP)/$(2)
+	mkdir -p $(KDIR_TMP)/$(2)/image
+	$(STAGING_DIR_HOST)/bin/wndr3700 \
+		$(KDIR_TMP)/vmlinux-$(2).uImage \
+		$(KDIR_TMP)/vmlinux-$(2).uImage.tmp \
+		$(5)
+	# Create fake header using UBI EC Header magic (UBI_EC_HDR_MAGIC)
+	echo -n "UBI#" > $(KDIR_TMP)/ubihdr
+	mkimage -A mips -O linux -T filesystem -C none \
+		-a 0xbf070000 -e 0xbf070000 \
+		-n 'MIPS OpenWrt rootfs' \
+		-d $(KDIR_TMP)/ubihdr \
+		$(KDIR_TMP)/ubihdr.uImage
+	$(STAGING_DIR_HOST)/bin/wndr3700 \
+		$(KDIR_TMP)/ubihdr.uImage \
+		$(KDIR_TMP)/ubihdr-$(2).uImage \
+		$(5)
+	# Calculate size between kernel and header of root filesystem
+	# (this will be filled with zeros)
+	paddingsize=$$$$(($(kernelsize) - `stat -c%s $(KDIR_TMP)/vmlinux-$(2).uImage.tmp` - 64)); \
+	( \
+		cat $(KDIR_TMP)/vmlinux-$(2).uImage.tmp; \
+		dd if=/dev/zero bs=1 count=$$$${paddingsize}; \
+		head -c 64 $(KDIR_TMP)/ubihdr-$(2).uImage \
+	) > vmlinux-$(2).uImage.fakehdrforubi
+endef
+
+
+define Image/Build/NetgearNAND/initramfs
+	$(call Image/Build/Netgear,$(1),$(2),$(3),$(4),$(5),$(6),$(7),$(8))
+endef
 
 ifdef CONFIG_PACKAGE_uboot-ar71xx-nbg460n_550n_550nh
   Image/Build/ZyXEL/buildkernel=$(call MkuImageLzma,$(2),$(3))
@@ -866,7 +926,7 @@ $(eval $(call SingleProfile,Netgear,64kraw,WNDR3800,wndr3800,WNDR3700,ttyS0,1152
 $(eval $(call SingleProfile,Netgear,64kraw,WNDRMAC,wndrmac,WNDR3700,ttyS0,115200,$$(wndr3700v2_mtdlayout),3701,WNDRMAC,"",-H 29763654+16+64))
 $(eval $(call SingleProfile,Netgear,64kraw,WNDRMACV2,wndrmacv2,WNDR3700,ttyS0,115200,$$(wndr3700v2_mtdlayout),3701,WNDRMACv2,"",-H 29763654+16+128))
 
-$(eval $(call SingleProfile,NetgearNAND,64k,WNDR4300,wndr4300,WNDR4300,ttyS0,115200,$$(wndr4300_mtdlayout),3703,WNDR4300,"",-H 29763948+0+128+128+2x2+3x3))
+$(eval $(call SingleProfile,NetgearNAND,128k,WNDR4300,wndr4300,WNDR4300,ttyS0,115200,$$(wndr4300_mtdlayout),3703,WNDR4300,"",-H 29763948+0+128+128+2x2+3x3))
 
 $(eval $(call SingleProfile,OpenMesh,squashfs-only,OM2P,om2p,,,,OM2P))
 $(eval $(call SingleProfile,OpenMesh,squashfs-only,MR600,mr600,,,,MR600))
