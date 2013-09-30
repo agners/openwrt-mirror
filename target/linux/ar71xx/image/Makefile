@@ -720,14 +720,19 @@ endef
 # $7:
 # $8: DNI Hardware version
 define Image/Build/NetgearNAND
-	# Append UBI image to rootfs and generate DNI image
-	( \
-		cat vmlinux-$(2).uImage.fakehdrforubi; \
-		cat $(KDIR)/root.ubi \
-	) > $(call imgname,ubifs,$(2))-uboot.img
+	$(eval firmwaresize=$(call mtdpartsize,firmware,$(4)))
+	$(eval kernelsize=$(call mtdpartsize,kernel,$(4)))
+	$(eval imageraw=$(call imgname,ubifs,$(2))-raw.img)
+	# Create firmware image full of 0xff to use the UBIFS auto-resize function
+	firmwareblocks=$$$$(($(firmwaresize) / 131072)); \
+	dd if=/dev/zero bs=128k count=$$$${firmwareblocks} conv=sync | tr '\000' '\377' > $(imageraw)
+	# Insert Kernel and UBI image to rootfs and generate DNI image
+	dd if=vmlinux-$(2).uImage.fakehdrforubi of=$(imageraw) conv=notrunc 
+	kernelblocks=$$$$(($(kernelsize) / 131072)); \
+	dd if=$(KDIR)/root.ubi of=$(imageraw) bs=128k seek=$$$${kernelblocks} conv=notrunc
 	$(STAGING_DIR_HOST)/bin/mkdniimg \
 		-B $(6) -v OpenWrt.$(REVISION) -r "$$$$r" $(8) \
-		-i $(call imgname,ubifs,$(2))-uboot.img \
+		-i $(imageraw) \
 		-o $(call imgname,ubifs,$(2))-factory.img
 endef
 
