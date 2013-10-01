@@ -711,7 +711,7 @@ define Image/Build/Netgear/initramfs
 endef
 
 
-# $1: squashfs-64k
+# $1: Image Type (ubi)
 # $2: Board name (small caps)
 # $3: Kernel board specific cmdline
 # $4: Kernel mtdparts definition
@@ -826,6 +826,17 @@ define Image/Build/Zcomax
 	fi
 endef
 
+define SquashfsTemplate
+  define Image/Build/Template/$(1)/squashfs
+    $$(call Image/Build/$$(1),squashfs$(2),$$(2),$$(3),$$(4),$$(5),$$(6),$$(7),$$(8))
+  endef
+endef
+
+define UbiTemplate
+  define Image/Build/Template/$(1)/ubi
+    $$(call Image/Build/$$(1),ubi,$$(2),$$(3),$$(4),$$(5),$$(6),$$(7),$$(8))
+  endef
+endef
 
 define Jffs2Template
   define Image/Build/Template/$(1)/jffs2-$(2)
@@ -833,6 +844,10 @@ define Jffs2Template
   endef
 endef
 
+# $1: Destination image align name
+# $2: Image postfix
+# $3: JFFS2 alignment, if enabled
+# $4: UBI image
 define BuildTemplate
   define Image/Build/Template/$(1)/initramfs
     $$(call Image/Build/$$(1)/initramfs,initramfs,$$(2),$$(3),$$(4),$$(5),$$(6),$$(7),$$(8))
@@ -843,10 +858,9 @@ define BuildTemplate
   define Image/Build/Template/$(1)/buildkernel
     $$(call Image/Build/$$(1)/buildkernel,,$$(2),$$(3),$$(4),$$(5),$$(6),$$(7),$$(8))
   endef
-  define Image/Build/Template/$(1)/squashfs
-    $$(call Image/Build/$$(1),squashfs$(2),$$(2),$$(3),$$(4),$$(5),$$(6),$$(7),$$(8))
-  endef
+  $(if $(1),$(call SquashfsTemplate,$(1),$(2)))
   $(if $(3),$(foreach bs,$(3),$(eval $(call Jffs2Template,$(1),$(bs)))))
+  $(if $(4),$(call UbiTemplate,$(1)))
 endef
 
 $(eval $(call BuildTemplate,squashfs-only))
@@ -857,6 +871,7 @@ $(eval $(call BuildTemplate,128k,,128k))
 $(eval $(call BuildTemplate,128kraw,-raw,128k))
 $(eval $(call BuildTemplate,256k,,256k))
 $(eval $(call BuildTemplate,all,,64k 128k 256k))
+$(eval $(call BuildTemplate,ubi,,,y))
 
 $(eval $(call SingleProfile,ALFA,64k,ALFANX,alfa-nx,ALFA-NX,ttyS0,115200,$$(alfa_mtdlayout_8M),1638400,6291456,vmlinux.gz.uImage,pb9x-2.6.31-jffs2))
 $(eval $(call SingleProfile,ALFA,64k,HORNETUB,hornet-ub,HORNET-UB,ttyATH0,115200,$$(alfa_mtdlayout_8M),1638400,6291456,kernel_image,rootfs_image))
@@ -931,7 +946,7 @@ $(eval $(call SingleProfile,Netgear,64kraw,WNDR3800,wndr3800,WNDR3700,ttyS0,1152
 $(eval $(call SingleProfile,Netgear,64kraw,WNDRMAC,wndrmac,WNDR3700,ttyS0,115200,$$(wndr3700v2_mtdlayout),3701,WNDRMAC,"",-H 29763654+16+64))
 $(eval $(call SingleProfile,Netgear,64kraw,WNDRMACV2,wndrmacv2,WNDR3700,ttyS0,115200,$$(wndr3700v2_mtdlayout),3701,WNDRMACv2,"",-H 29763654+16+128))
 
-$(eval $(call SingleProfile,NetgearNAND,128k,WNDR4300,wndr4300,WNDR4300,ttyS0,115200,$$(wndr4300_mtdlayout),3703,WNDR4300,"",-H 29763948+0+128+128+2x2+3x3))
+$(eval $(call SingleProfile,NetgearNAND,ubi,WNDR4300,wndr4300,WNDR4300,ttyS0,115200,$$(wndr4300_mtdlayout),3703,WNDR4300,"",-H 29763948+0+128+128+2x2+3x3))
 
 $(eval $(call SingleProfile,OpenMesh,squashfs-only,OM2P,om2p,,,,OM2P))
 $(eval $(call SingleProfile,OpenMesh,squashfs-only,MR600,mr600,,,,MR600))
