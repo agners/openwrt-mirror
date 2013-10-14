@@ -774,7 +774,7 @@ endef
 
 
 define Image/Build/NetgearNAND/initramfs
-	$(call Image/Build/Netgear,$(1),$(2),$(3),$(4),$(5),$(6),$(7),$(8))
+	$(call Image/Build/Netgear/initramfs,$(1),$(2),$(3),$(4),$(5),$(6),$(7),$(8))
 endef
 
 ifdef CONFIG_PACKAGE_uboot-ar71xx-nbg460n_550n_550nh
