@@ -720,6 +720,10 @@ endef
 # $7:
 # $8: DNI Hardware version
 define Image/Build/NetgearNAND
+	$(call Image/Build/NetgearNAND/$(1),$(1),$(2),$(3),$(4),$(5),$(6),$(7),$(8))
+endef
+
+define Image/Build/NetgearNAND/ubi
 	$(eval firmwaresize=$(call mtdpartsize,firmware,$(4)))
 	$(eval kernelsize=$(call mtdpartsize,kernel,$(4)))
 	$(eval imageraw=$(call imgname,ubifs,$(2))-raw.img)
