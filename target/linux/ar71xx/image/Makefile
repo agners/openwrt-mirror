@@ -204,7 +204,7 @@ wnr2200_mtdlayout=mtdparts=spi0.0:320k(u-boot)ro,128k(u-boot-env)ro,7680k(firmwa
 wnr2000v3_mtdlayout=mtdparts=spi0.0:256k(u-boot)ro,64k(u-boot-env)ro,3712k(firmware),64k(art)ro
 wndr3700_mtdlayout=mtdparts=spi0.0:320k(u-boot)ro,128k(u-boot-env)ro,7680k(firmware),64k(art)ro
 wndr3700v2_mtdlayout=mtdparts=spi0.0:320k(u-boot)ro,128k(u-boot-env)ro,15872k(firmware),64k(art)ro
-wndr4300_mtdlayout=mtdparts=ar934x-nfc:256k(u-boot)ro,256k(u-boot-env)ro,256k(caldata),512k(pot),2048k(language),512k(config),3072k(traffic_meter),1152k(kernel),24448k(rootfs),25600k@0x6c0000(firmware),256k(caldata_backup),-(reserved)
+wndr4300_mtdlayout=mtdparts=ar934x-nfc:256k(u-boot)ro,256k(u-boot-env)ro,256k(caldata),512k(pot),2048k(language),512k(config),3072k(traffic_meter),1152k(kernel),24448k(ubiroot),25600k@0x6c0000(firmware),256k(caldata_backup),-(reserved)
 zcn1523h_mtdlayout=mtdparts=spi0.0:256k(u-boot)ro,64k(u-boot-env)ro,6208k(rootfs),1472k(kernel),64k(configure)ro,64k(mfg)ro,64k(art)ro,7680k@0x50000(firmware)
 mynet_n600_mtdlayout=mtdparts=spi0.0:256k(u-boot)ro,64k(u-boot-env)ro,64k(devdata)ro,64k(devconf)ro,15872k(firmware),64k(radiocfg)ro
 
@@ -713,7 +713,72 @@ define Image/Build/Netgear/initramfs
 		$(5)
 endef
 
-Image/Build/NetgearNAND/initramfs=$(call Image/Build/Netgear/initramfs,$(1),$(2),$(3),$(4),$(5))
+
+# $1: Image Type (ubi)
+# $2: Board name (small caps)
+# $3: Kernel board specific cmdline
+# $4: Kernel mtdparts definition
+# $5: U-Boot magic
+# $6: Board name (upper caps)
+# $7:
+# $8: DNI Hardware version
+define Image/Build/NetgearNAND
+	$(eval firmwaresize=$(call mtdpartsize,firmware,$(4)))
+	$(eval kernelsize=$(call mtdpartsize,kernel,$(4)))
+	$(eval imageraw=$(call imgname,ubifs,$(2))-raw.img)
+	# Create firmware image full of 0xff to use the UBIFS auto-resize function
+	firmwareblocks=$$$$(($(firmwaresize) / 131072)); \
+	dd if=/dev/zero bs=128k count=$$$${firmwareblocks} conv=sync | tr '\000' '\377' > $(imageraw)
+	# Insert Kernel and UBI image to rootfs and generate DNI image
+	dd if=vmlinux-$(2).uImage.fakehdrforubi of=$(imageraw) conv=notrunc
+	kernelblocks=$$$$(($(kernelsize) / 131072)); \
+	dd if=$(KDIR)/root.ubi of=$(imageraw) bs=128k seek=$$$${kernelblocks} conv=notrunc
+	$(STAGING_DIR_HOST)/bin/mkdniimg \
+		-B $(6) -v OpenWrt.$(REVISION) -r "$$$$r" $(8) \
+		-i $(imageraw) \
+		-o $(call imgname,$(1),$(2))-factory.img
+endef
+
+# $1: (empty?)
+# $2: Board name (small caps)
+# $3: Kernel board specific cmdline
+# $4: Kernel mtdparts definition
+# $5: U-Boot magic
+define Image/Build/NetgearNAND/buildkernel
+	$(eval kernelsize=$(call mtdpartsize,kernel,$(4)))
+	echo == NetgearNAND buildkernel ==
+	$(call MkuImageLzma,$(2),$(3) $(4),-d20)
+	-rm -rf $(KDIR_TMP)/$(2)
+	mkdir -p $(KDIR_TMP)/$(2)/image
+	$(STAGING_DIR_HOST)/bin/wndr3700 \
+		$(KDIR_TMP)/vmlinux-$(2).uImage \
+		$(KDIR_TMP)/vmlinux-$(2).uImage.tmp \
+		$(5)
+	# Create fake header using UBI EC Header magic (UBI_EC_HDR_MAGIC)
+	echo -n "UBI#" > $(KDIR_TMP)/ubihdr
+	mkimage -A mips -O linux -T filesystem -C none \
+		-a 0xbf070000 -e 0xbf070000 \
+		-n 'MIPS OpenWrt rootfs' \
+		-d $(KDIR_TMP)/ubihdr \
+		$(KDIR_TMP)/ubihdr.uImage
+	$(STAGING_DIR_HOST)/bin/wndr3700 \
+		$(KDIR_TMP)/ubihdr.uImage \
+		$(KDIR_TMP)/ubihdr-$(2).uImage \
+		$(5)
+	# Calculate size between kernel and header of root filesystem
+	# (this will be filled with zeros)
+	paddingsize=$$$$(($(kernelsize) - `stat -c%s $(KDIR_TMP)/vmlinux-$(2).uImage.tmp` - 64)); \
+	( \
+		cat $(KDIR_TMP)/vmlinux-$(2).uImage.tmp; \
+		dd if=/dev/zero bs=1 count=$$$${paddingsize}; \
+		head -c 64 $(KDIR_TMP)/ubihdr-$(2).uImage \
+	) > vmlinux-$(2).uImage.fakehdrforubi
+endef
+
+
+define Image/Build/NetgearNAND/initramfs
+	$(call Image/Build/Netgear,$(1),$(2),$(3),$(4),$(5),$(6),$(7),$(8))
+endef
 
 ifdef CONFIG_PACKAGE_uboot-ar71xx-nbg460n_550n_550nh
   Image/Build/ZyXEL/buildkernel=$(call MkuImageLzma,$(2),$(3))
@@ -764,6 +829,17 @@ define Image/Build/Zcomax
 	fi
 endef
 
+define SquashfsTemplate
+  define Image/Build/Template/$(1)/squashfs
+    $$(call Image/Build/$$(1),squashfs$(2),$$(2),$$(3),$$(4),$$(5),$$(6),$$(7),$$(8))
+  endef
+endef
+
+define UbiTemplate
+  define Image/Build/Template/$(1)/ubi
+    $$(call Image/Build/$$(1),ubi,$$(2),$$(3),$$(4),$$(5),$$(6),$$(7),$$(8))
+  endef
+endef
 
 define Jffs2Template
   define Image/Build/Template/$(1)/jffs2-$(2)
@@ -771,6 +847,10 @@ define Jffs2Template
   endef
 endef
 
+# $1: Destination image align name
+# $2: Image postfix
+# $3: JFFS2 alignment, if enabled
+# $4: UBI image
 define BuildTemplate
   define Image/Build/Template/$(1)/initramfs
     $$(call Image/Build/$$(1)/initramfs,initramfs,$$(2),$$(3),$$(4),$$(5),$$(6),$$(7),$$(8))
@@ -781,10 +861,9 @@ define BuildTemplate
   define Image/Build/Template/$(1)/buildkernel
     $$(call Image/Build/$$(1)/buildkernel,,$$(2),$$(3),$$(4),$$(5),$$(6),$$(7),$$(8))
   endef
-  define Image/Build/Template/$(1)/squashfs
-    $$(call Image/Build/$$(1),squashfs$(2),$$(2),$$(3),$$(4),$$(5),$$(6),$$(7),$$(8))
-  endef
+  $(if $(1),$(call SquashfsTemplate,$(1),$(2)))
   $(if $(3),$(foreach bs,$(3),$(eval $(call Jffs2Template,$(1),$(bs)))))
+  $(if $(4),$(call UbiTemplate,$(1)))
 endef
 
 $(eval $(call BuildTemplate,squashfs-only))
@@ -795,6 +874,7 @@ $(eval $(call BuildTemplate,128k,,128k))
 $(eval $(call BuildTemplate,128kraw,-raw,128k))
 $(eval $(call BuildTemplate,256k,,256k))
 $(eval $(call BuildTemplate,all,,64k 128k 256k))
+$(eval $(call BuildTemplate,ubi,,,y))
 
 ifeq ($(SUBTARGET),generic)
 $(eval $(call SingleProfile,ALFA,64k,ALFANX,alfa-nx,ALFA-NX,ttyS0,115200,$$(alfa_mtdlayout_8M),1638400,6291456,vmlinux.gz.uImage,pb9x-2.6.31-jffs2))
@@ -1003,7 +1083,7 @@ $(eval $(call MultiProfile,Madwifi,EAP7660D UBNTRS UBNTRSPRO UBNTLSSR71 WP543))
 endif # ifeq ($(SUBTARGET),generic)
 
 ifeq ($(SUBTARGET),nand)
-$(eval $(call SingleProfile,NetgearNAND,64k,WNDR4300,wndr4300,WNDR4300,ttyS0,115200,$$(wndr4300_mtdlayout),3703,WNDR4300,"",-H 29763948+0+128+128+2x2+3x3))
+$(eval $(call SingleProfile,NetgearNAND,ubi,WNDR4300,wndr4300,WNDR4300,ttyS0,115200,$$(wndr4300_mtdlayout),3703,WNDR4300,"",-H 29763948+0+128+128+2x2+3x3))
 endif # ifeq ($(SUBTARGET),nand)
 
 
