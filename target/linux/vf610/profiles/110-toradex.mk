@@ -5,16 +5,20 @@
 # See /LICENSE for more information.
 #
 
-define Profile/VF610_COLIBRI
+define Profile/COLIBRI_VF
   NAME:=Toradex Colibri VFxx family
   PACKAGES:= \
 	kmod-usb-chipidea-imx kmod-usb-mxs-phy \
 	kmod-can kmod-can-flexcan kmod-can-raw
 endef
 
-define Profile/VF610_COLIBRI/Description
+define Profile/COLIBRI_VF/Description
  Toradex Colibri VF50 and VF61 Computer on Module products are based on
  Freescale Vybrid SoC
 endef
 
-$(eval $(call Profile,VF610_COLIBRI))
+COLIBRI_VF_DTS:= \
+	vf500-colibri-eval-v3 \
+	vf610-colibri-eval-v3 \
+
+$(eval $(call Profile,COLIBRI_VF))

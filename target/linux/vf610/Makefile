@@ -9,7 +9,7 @@ include $(TOPDIR)/rules.mk
 ARCH:=arm
 BOARD:=vf610
 BOARDNAME:=Freescale Vybrid
-FEATURES:=audio display fpu gpio rtc usb usbgadget squashfs targz nand ubifs
+FEATURES:=audio display fpu gpio rtc usb usbgadget targz nand ubifs
 CPU_TYPE:=cortex-a5
 CPU_SUBTYPE:=neon
 MAINTAINER:=Stefan Agner <stefan@agner.ch>
